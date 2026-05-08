@@ -762,7 +762,7 @@ body{
 
 <div class="btns" style="margin-top:24px;">
   <button class="btn btn-primary" onclick="guardarRegistro()" id="btnGuardar">Guardar turno</button>
-  <button class="btn btn-red" onclick="cargarDatos()">Actualizar datos</button>
+  <button class="btn btn-red" onclick="actualizarDatos()" id="btnActualizar"> Actualizar datos</button>
   <button class="btn btn-gold" onclick="abrirBusqueda()">Buscar historial</button>
 </div>
 
@@ -882,10 +882,17 @@ body{
   <div class="modal search-modal">
     <h3>🔍 Buscar historial</h3>
     <p>Filtrá por fecha y/o rango horario.</p>
-    <div class="field" style="margin-bottom:16px;">
-      <label>Fecha</label>
-      <input type="date" id="fechaBusqueda">
-    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+  <div class="field">
+    <label>Fecha desde</label>
+    <input type="date" id="fechaBusqueda">
+  </div>
+  <div class="field">
+    <label>Fecha hasta</label>
+    <input type="date" id="fechaBusquedaHasta">
+  </div>
+
+</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
       <div class="field">
         <label>Hora desde (opcional)</label>
@@ -947,6 +954,7 @@ const hoy = new Date().toISOString().split('T')[0];
 document.getElementById('fecha').value = hoy;
 document.getElementById('fechaHasta').value = hoy;
 document.getElementById('fechaBusqueda').value = hoy;
+document.getElementById('fechaBusquedaHasta').value = hoy;
 
 document.getElementById('fecha').addEventListener('change', function(){
   document.getElementById('fechaHasta').value = this.value;
@@ -1078,8 +1086,34 @@ async function cargarDatos(){
     renderCards(rows);
 
   }catch(err){
+  console.error(err);
+  toast('❌ No se pudo cargar el historial');
+  throw err;
+}
+}
+
+async function actualizarDatos(){
+
+  const btn = document.getElementById('btnActualizar');
+
+  btn.innerHTML = '<span class="loading"></span>Actualizando...';
+  btn.disabled = true;
+
+  try{
+
+    await cargarDatos();
+
+    toast('✅ Datos actualizados correctamente');
+
+  }catch(err){
+
     console.error(err);
-    toast('❌ No se pudo cargar el historial');
+    toast('❌ Error al actualizar');
+
+  }finally{
+
+    btn.innerHTML = 'Actualizar datos';
+    btn.disabled = false;
   }
 }
 
@@ -1203,8 +1237,38 @@ function renderCards(rows){
     }
   }
 
-  const vigentes = rows.filter(estaVigente);
-  const hayGuardiaActiva = vigentes.length > 0;
+  const vigentes = rows
+  .map(r => {
+    if(!r || !r.horario) return null;
+    const match = r.horario.match(
+      /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s*→\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/
+    );
+    if(!match) return null;
+    const inicio = new Date(
+      parseInt(match[3]),
+      parseInt(match[2]) - 1,
+      parseInt(match[1]),
+      parseInt(match[4]),
+      parseInt(match[5])
+    );
+    const fin = new Date(
+      parseInt(match[8]),
+      parseInt(match[7]) - 1,
+      parseInt(match[6]),
+      parseInt(match[9]),
+      parseInt(match[10])
+    );
+    return {
+      ...r,
+      inicio,
+      fin
+    };
+
+  })
+  .filter(r => r && ahora >= r.inicio && ahora <= r.fin)
+  .sort((a,b) => b.inicio - a.inicio);
+
+const hayGuardiaActiva = vigentes.length > 0;
 
   const clockTime = document.getElementById('clockTime');
   const clockBar = document.querySelector('.clock-bar');
@@ -1247,7 +1311,7 @@ function renderCards(rows){
   if (dot) dot.classList.remove('status-warning');
   if (guardiaEstado) guardiaEstado.textContent = 'Guardia activa';
   
-  const ultimo = vigentes[vigentes.length - 1];
+  const ultimo = vigentes[0];
   
   if (ultimo) {
     const puestos = [
@@ -1376,29 +1440,85 @@ function abrirBusqueda(){
 }
 
 function ejecutarBusqueda(){
-  const fecha      = document.getElementById('fechaBusqueda').value;
-  const buscaDesde = document.getElementById('buscaDesde').value;
-  const buscaHasta = document.getElementById('buscaHasta').value;
-  if(!fecha && !buscaDesde && !buscaHasta){
-    toast('⚠ Ingresá al menos una fecha u horario');
+
+  const fechaDesde = document.getElementById('fechaBusqueda').value;
+  const fechaHasta = document.getElementById('fechaBusquedaHasta').value;
+
+  const buscaDesde = document.getElementById('buscaDesde').value || '00:00';
+  const buscaHasta = document.getElementById('buscaHasta').value || '23:59';
+
+  if(!fechaDesde || !fechaHasta){
+    toast('⚠ Seleccioná fecha desde y hasta');
     return;
   }
+
   cerrarModal('modalBusqueda');
+
   fetch(SCRIPT_URL + '?accion=listar')
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(rows => {
-      let filtrados = rows;
-      if(fecha) filtrados = filtrados.filter(r => r.fecha === fecha);
-      if(buscaDesde) filtrados = filtrados.filter(r => (r.horario?.split(' - ')[0] || '') >= buscaDesde);
-      if(buscaHasta) filtrados = filtrados.filter(r => (r.horario?.split(' - ')[1] || '') <= buscaHasta);
+
+      // =========================
+      // ARMAR RANGO BUSCADO
+      // =========================
+
+      const inicioBusqueda = new Date(fechaDesde + 'T' + buscaDesde);
+      const finBusqueda    = new Date(fechaHasta + 'T' + buscaHasta);
+
+      let filtrados = rows.filter(r => {
+
+        if(!r.horario) return false;
+
+        const match = r.horario.match(
+          /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s*→\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/
+        );
+
+        if(!match) return false;
+
+        // =========================
+        // FECHA/HORA DEL REGISTRO
+        // =========================
+
+        const inicioRegistro = new Date(
+          parseInt(match[3]),
+          parseInt(match[2]) - 1,
+          parseInt(match[1]),
+          parseInt(match[4]),
+          parseInt(match[5])
+        );
+
+        const finRegistro = new Date(
+          parseInt(match[8]),
+          parseInt(match[7]) - 1,
+          parseInt(match[6]),
+          parseInt(match[9]),
+          parseInt(match[10])
+        );
+
+        // =========================
+        // SUPERPOSICIÓN DE RANGOS
+        // =========================
+
+        return (
+          inicioRegistro <= finBusqueda &&
+          finRegistro >= inicioBusqueda
+        );
+
+      });
+
       if(!filtrados.length){
-        toast('Sin registros para ese filtro');
+        toast('⚠ Sin registros para ese filtro');
         return;
       }
+
       renderTabla(filtrados);
+
       toast('📋 ' + filtrados.length + ' registro(s) encontrado(s)');
     })
-    .catch(() => toast('❌ Error al buscar'));
+    .catch(err => {
+      console.error(err);
+      toast('❌ Error al buscar');
+    });
 }
 
 // =====================================
