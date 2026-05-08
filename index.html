@@ -987,6 +987,14 @@ async function guardarRegistro(){
     return;
   }
 
+  if(hasta < desde && fecha === fechaHasta){
+
+  alert('Debés cambiar "Fecha hasta" al día siguiente.'
+  );
+
+  return;
+}
+
   const btn = document.getElementById('btnGuardar');
   btn.innerHTML = '<span class="loading"></span>Guardando...';
   btn.disabled = true;
