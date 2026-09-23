@@ -6,7 +6,7 @@
 <title>STM — Centro de Control</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 
 <style>
 *{
@@ -607,9 +607,144 @@ body{
   border:1px solid rgba(255,83,112,.25) !important;
   color:var(--red) !important;
 }
+
+/* =====================
+   LOGIN SCREEN
+   ===================== */
+
+.login-overlay{
+  position:fixed;
+  inset:0;
+  background:var(--bg);
+  z-index:10000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:24px;
+}
+
+.login-overlay.hidden{
+  display:none;
+}
+
+.login-box{
+  background:linear-gradient(180deg,var(--panel),var(--panel2));
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:40px;
+  width:min(440px,90vw);
+  box-shadow:var(--shadow);
+  text-align:center;
+}
+
+.login-box h2{
+  font-family:'Orbitron',sans-serif;
+  font-size:20px;
+  letter-spacing:.1em;
+  margin-bottom:8px;
+  color:var(--accent);
+}
+
+.login-box p{
+  color:var(--muted);
+  font-size:14px;
+  margin-bottom:28px;
+}
+
+.login-box .field{
+  text-align:left;
+}
+
+.login-box .field select{
+  width:100%;
+  height:54px;
+  font-size:15px;
+}
+
+.login-box .btn{
+  width:100%;
+  margin-top:20px;
+  height:54px;
+  font-size:15px;
+}
+
+.login-btns{
+  display:flex;
+  gap:12px;
+  margin-top:20px;
+}
+
+.login-btns .btn{
+  flex:1;
+  margin-top:0;
+  height:54px;
+  font-size:15px;
+}
+
+/* User badge en topbar */
+.user-badge{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:rgba(0,207,255,.08);
+  border:1px solid rgba(0,207,255,.2);
+  border-radius:999px;
+  padding:8px 16px;
+  font-size:13px;
+  font-weight:600;
+  color:var(--accent);
+  cursor:pointer;
+  transition:.2s;
+}
+
+.user-badge:hover{
+  background:rgba(0,207,255,.15);
+  border-color:rgba(0,207,255,.35);
+}
+
+.user-badge .user-icon{
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:700;
+  font-size:12px;
+  color:white;
+}
 </style>
 </head>
 <body>
+
+<!-- ============================
+     LOGIN SCREEN
+     ============================ -->
+<div class="login-overlay" id="loginOverlay">
+  <!-- Pantalla 1: Confirmar último usuario -->
+  <div class="login-box" id="loginConfirmar">
+    <h2>STM CONTROL</h2>
+    <p id="loginPregunta">¿Sos vos?</p>
+    <div class="login-btns">
+      <button class="btn btn-green" onclick="confirmarUsuario(true)">Sí, soy yo</button>
+      <button class="btn btn-red" onclick="confirmarUsuario(false)">No, soy otro</button>
+    </div>
+  </div>
+  <!-- Pantalla 2: Seleccionar usuario -->
+  <div class="login-box" id="loginSelector" style="display:none;">
+    <h2>STM CONTROL</h2>
+    <p>Seleccioná tu usuario para ingresar</p>
+    <div class="field">
+      <label>Usuario</label>
+      <select id="loginUser">
+        <option value="">— Seleccionar —</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="ingresar()">Ingresar</button>
+  </div>
+</div>
 
 <!-- ============================
      TOPBAR
@@ -623,6 +758,10 @@ body{
     <div class="status">
       <div class="dot"></div>
       Google Sheets conectado
+    </div>
+    <div class="user-badge" id="userBadge" onclick="cambiarUsuario()" style="display:none;">
+      <div class="user-icon" id="userIcon"></div>
+      <span id="userNombre"></span>
     </div>
   </div>
 </div>
@@ -801,8 +940,8 @@ body{
         <table class="funciones-table">
           <thead>
             <tr>
-              <th style="background:var(--color-background-secondary);color:var(--color-text-secondary);width:110px;">Puesto</th>
-              <th style="background:var(--color-background-secondary);color:var(--color-text-secondary);">Función</th>
+              <th style="background:#0a1525;color:var(--muted);width:110px;">Puesto</th>
+              <th style="background:#0a1525;color:var(--muted);">Función</th>
             </tr>
           </thead>
           <tbody>
@@ -932,7 +1071,7 @@ const PERSONAL = [
   'MONGES, Nahúm Antonio Nahuel','LOVERA, Fernando Augusto','INSAURRALDE Francisco','BAREIRO DIAZ, Diego',
   'BELIERA Jessica Ayelén','MENESES, Camila Elena','STUTZ, Matías','CHAVEZ, Guillermo Abraham', 'ROMERO ROLDAN, Enzo Gabriel',
   'MELGAREJO SOLAN, Elisa Noemi', 'AGUILERA, Bruno Tobias', 'HINOJOS PAZ, Marcos Jesús', 'AVALOS, Mariano Esteban', 'GARCIA, Verónica Malen',
-  'VALENZUELA, Esteban Fabian',
+  'VALENZUELA, Esteban Fabian', 'GARCÍA, Alfredo Antonio', 'ROMERO, Claudio Ramón',
 ];
 
 // =====================================
@@ -940,6 +1079,71 @@ const PERSONAL = [
 // =====================================
 
 const SELECTS_PERSONAL = ['selOficial','selEncargado','selSime','selSidom','selOp1','selOp2','selOp3'];
+
+// Poblar selector de login
+const loginSelect = document.getElementById('loginUser');
+PERSONAL.sort().forEach(p => {
+  const op = document.createElement('option');
+  op.value = p;
+  op.textContent = p;
+  loginSelect.appendChild(op);
+});
+
+// =====================================
+// GESTIÓN DE USUARIO
+// =====================================
+
+let usuarioActual = localStorage.getItem('stm_usuario') || '';
+
+function mostrarLogin(){
+  const ultimo = localStorage.getItem('stm_usuario');
+  if(ultimo){
+    document.getElementById('loginPregunta').textContent = '¿Sos ' + ultimo.split(',')[0] + ', ' + ultimo.split(',')[1]?.trim() + '?';
+    document.getElementById('loginConfirmar').style.display = '';
+    document.getElementById('loginSelector').style.display = 'none';
+  } else {
+    document.getElementById('loginConfirmar').style.display = 'none';
+    document.getElementById('loginSelector').style.display = '';
+  }
+  document.getElementById('loginOverlay').classList.remove('hidden');
+}
+
+function confirmarUsuario(esYo){
+  if(esYo){
+    usuarioActual = localStorage.getItem('stm_usuario');
+    mostrarUsuario();
+  } else {
+    document.getElementById('loginConfirmar').style.display = 'none';
+    document.getElementById('loginSelector').style.display = '';
+  }
+}
+
+function mostrarUsuario(){
+  if(!usuarioActual) return;
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('userBadge').style.display = 'flex';
+  document.getElementById('userNombre').textContent = usuarioActual;
+  document.getElementById('userIcon').textContent = usuarioActual.split(',')[0].charAt(0);
+}
+
+function ingresar(){
+  const val = document.getElementById('loginUser').value;
+  if(!val){
+    toast('⚠ Seleccioná un usuario');
+    return;
+  }
+  usuarioActual = val;
+  localStorage.setItem('stm_usuario', val);
+  mostrarUsuario();
+}
+
+function cambiarUsuario(){
+  mostrarLogin();
+  loginSelect.value = usuarioActual;
+}
+
+// Al arrancar, siempre mostrar login
+mostrarLogin();
 
 SELECTS_PERSONAL.forEach(id => {
   const sel = document.getElementById(id);
@@ -961,9 +1165,8 @@ document.getElementById('fecha').addEventListener('change', function(){
   document.getElementById('fechaHasta').value = this.value;
 });
 
-let chartPuestos;
-let chartActividad;
 let pendingDeleteId = null;
+let busquedaActiva = false;
 
 // =====================================
 // GUARDAR REGISTRO
@@ -985,6 +1188,11 @@ async function guardarRegistro(){
 
   if(!fecha || !fechaHasta || !desde || !hasta){
     toast('⚠ Completá al menos las fechas y horarios');
+    return;
+  }
+
+  if(!usuarioActual){
+    toast('⚠ Ingresá con tu usuario primero');
     return;
   }
 
@@ -1016,7 +1224,8 @@ async function guardarRegistro(){
     sidom     : sidom,
     op1       : op1,
     op2       : op2,
-    op3       : op3
+    op3       : op3,
+    usuario   : usuarioActual || 'Desconocido'
   };
 
   try{
@@ -1031,6 +1240,7 @@ async function guardarRegistro(){
 
     if(data.ok){
       toast('✅ Turno guardado correctamente');
+      busquedaActiva = false;
       cargarDatos();
     }else{
       toast('❌ Error al guardar: ' + (data.error || 'desconocido'));
@@ -1088,10 +1298,6 @@ async function cargarDatos(){
 
     // Renderizar tabla con el filtro de 24h
     renderTabla(rowsFiltrados);
-    
-    // Los gráficos y cards siguen usando la data completa sin filtrar
-    // (ya que los gráficos y estado de guardia activa necesitan todo el histórico)
-    renderGraficos(rows);
     renderCards(rows);
 
   }catch(err){
@@ -1102,7 +1308,7 @@ async function cargarDatos(){
 }
 
 async function actualizarDatos(){
-
+  busquedaActiva = false;
   const btn = document.getElementById('btnActualizar');
 
   btn.innerHTML = '<span class="loading"></span>Actualizando...';
@@ -1126,10 +1332,34 @@ async function actualizarDatos(){
   }
 }
 
-// Función placeholder para gráficos (sin cambios)
-function renderGraficos(rows){
-  // Mantenemos la función vacía para no romper nada
-  // Los gráficos no se usan en la UI final, pero se deja la referencia
+// =====================================
+// PARSEO ROBUSTO DE HORARIOS
+// =====================================
+
+function parseHorarioRango(horario){
+  if(!horario || typeof horario !== 'string') return null;
+
+  // Formato principal: DD/MM/YYYY HH:MM → DD/MM/YYYY HH:MM
+  const match = horario.match(
+    /(\d{2})[\/\-](\d{2})[\/\-](\d{4})\s+(\d{2}):(\d{2})\s*[→\->]+\s*(\d{2})[\/\-](\d{2})[\/\-](\d{4})\s+(\d{2}):(\d{2})/
+  );
+
+  if(!match) return null;
+
+  try {
+    const inicio = new Date(
+      parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]),
+      parseInt(match[4]), parseInt(match[5])
+    );
+    const fin = new Date(
+      parseInt(match[8]), parseInt(match[7]) - 1, parseInt(match[6]),
+      parseInt(match[9]), parseInt(match[10])
+    );
+    if(isNaN(inicio.getTime()) || isNaN(fin.getTime())) return null;
+    return { inicio, fin };
+  } catch(e) {
+    return null;
+  }
 }
 
 // =====================================
@@ -1175,8 +1405,7 @@ function renderTabla(rows){
     return;
   }
 
-  // Mostrar más reciente primero
-  [...rows].reverse().forEach(r => {
+  rows.forEach(r => {
 
     const tr = document.createElement('tr');
 
@@ -1214,65 +1443,12 @@ function renderTabla(rows){
 function renderCards(rows){
   const ahora = new Date();
 
-  function estaVigente(r){
-    if(!r || !r.horario) return false;
-
-    const match = r.horario.match(
-      /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s*→\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/
-    );
-
-    if(!match) return false;
-
-    try {
-      const inicio = new Date(
-        parseInt(match[3]),
-        parseInt(match[2]) - 1,
-        parseInt(match[1]),
-        parseInt(match[4]),
-        parseInt(match[5])
-      );
-
-      const fin = new Date(
-        parseInt(match[8]),
-        parseInt(match[7]) - 1,
-        parseInt(match[6]),
-        parseInt(match[9]),
-        parseInt(match[10])
-      );
-
-      return ahora >= inicio && ahora <= fin;
-    } catch(e) {
-      return false;
-    }
-  }
-
   const vigentes = rows
   .map(r => {
     if(!r || !r.horario) return null;
-    const match = r.horario.match(
-      /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s*→\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/
-    );
-    if(!match) return null;
-    const inicio = new Date(
-      parseInt(match[3]),
-      parseInt(match[2]) - 1,
-      parseInt(match[1]),
-      parseInt(match[4]),
-      parseInt(match[5])
-    );
-    const fin = new Date(
-      parseInt(match[8]),
-      parseInt(match[7]) - 1,
-      parseInt(match[6]),
-      parseInt(match[9]),
-      parseInt(match[10])
-    );
-    return {
-      ...r,
-      inicio,
-      fin
-    };
-
+    const rango = parseHorarioRango(r.horario);
+    if(!rango) return null;
+    return { ...r, inicio: rango.inicio, fin: rango.fin };
   })
   .filter(r => r && ahora >= r.inicio && ahora <= r.fin)
   .sort((a,b) => b.inicio - a.inicio);
@@ -1381,23 +1557,24 @@ function iniciarAutoRefresh(){
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(rows => {
         renderCards(rows);
-        // Refrescar también la tabla con el filtro de 24h
-        const ahora = new Date();
-        const hace24h = new Date(ahora.getTime() - (24 * 60 * 60 * 1000));
-        const rowsFiltrados = rows.filter(r => {
-          if(!r || !r.fecha) return false;
-          let fechaRegistro;
-          if(typeof r.fecha === 'string' && r.fecha.includes('-') && r.fecha.length === 10){
-            fechaRegistro = new Date(r.fecha + 'T00:00:00');
-          } else if(typeof r.fecha === 'string' && r.fecha.includes('/')){
-            const partes = r.fecha.split('/');
-            if(partes.length === 3){
-              fechaRegistro = new Date(partes[2], partes[1]-1, partes[0]);
+        if(!busquedaActiva){
+          const ahora = new Date();
+          const hace24h = new Date(ahora.getTime() - (24 * 60 * 60 * 1000));
+          const rowsFiltrados = rows.filter(r => {
+            if(!r || !r.fecha) return false;
+            let fechaRegistro;
+            if(typeof r.fecha === 'string' && r.fecha.includes('-') && r.fecha.length === 10){
+              fechaRegistro = new Date(r.fecha + 'T00:00:00');
+            } else if(typeof r.fecha === 'string' && r.fecha.includes('/')){
+              const partes = r.fecha.split('/');
+              if(partes.length === 3){
+                fechaRegistro = new Date(partes[2], partes[1]-1, partes[0]);
+              } else { return false; }
             } else { return false; }
-          } else { return false; }
-          return fechaRegistro >= hace24h;
-        });
-        renderTabla(rowsFiltrados);
+            return fechaRegistro >= hace24h;
+          });
+          renderTabla(rowsFiltrados);
+        }
       })
       .catch(err => console.error('Error en auto-refresh:', err));
   }, 30000);
@@ -1421,7 +1598,8 @@ document.getElementById('btnConfirmarEliminar').addEventListener('click', async 
       body: JSON.stringify({
         token: SECRET_TOKEN,
         accion: 'eliminar',
-        id: pendingDeleteId
+        id: pendingDeleteId,
+        usuario: usuarioActual || 'Desconocido'
       })
     });
     if(!res.ok) throw new Error('HTTP ' + res.status);
@@ -1462,57 +1640,31 @@ function ejecutarBusqueda(){
   }
 
   cerrarModal('modalBusqueda');
+  busquedaActiva = true;
 
   fetch(SCRIPT_URL + '?accion=listar')
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(rows => {
 
-      // =========================
-      // ARMAR RANGO BUSCADO
-      // =========================
+      const partesDesde = fechaDesde.split('-');
+      const partesHasta = fechaHasta.split('-');
+      const partesHoraD = buscaDesde.split(':');
+      const partesHoraH = buscaHasta.split(':');
 
-      const inicioBusqueda = new Date(fechaDesde + 'T' + buscaDesde);
-      const finBusqueda    = new Date(fechaHasta + 'T' + buscaHasta);
+      const inicioBusqueda = new Date(
+        parseInt(partesDesde[0]), parseInt(partesDesde[1]) - 1, parseInt(partesDesde[2]),
+        parseInt(partesHoraD[0]), parseInt(partesHoraD[1])
+      );
+      const finBusqueda = new Date(
+        parseInt(partesHasta[0]), parseInt(partesHasta[1]) - 1, parseInt(partesHasta[2]),
+        parseInt(partesHoraH[0]), parseInt(partesHoraH[1])
+      );
 
       let filtrados = rows.filter(r => {
-
-        if(!r.horario) return false;
-
-        const match = r.horario.match(
-          /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s*→\s*(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/
-        );
-
-        if(!match) return false;
-
-        // =========================
-        // FECHA/HORA DEL REGISTRO
-        // =========================
-
-        const inicioRegistro = new Date(
-          parseInt(match[3]),
-          parseInt(match[2]) - 1,
-          parseInt(match[1]),
-          parseInt(match[4]),
-          parseInt(match[5])
-        );
-
-        const finRegistro = new Date(
-          parseInt(match[8]),
-          parseInt(match[7]) - 1,
-          parseInt(match[6]),
-          parseInt(match[9]),
-          parseInt(match[10])
-        );
-
-        // =========================
-        // SUPERPOSICIÓN DE RANGOS
-        // =========================
-
-        return (
-          inicioRegistro <= finBusqueda &&
-          finRegistro >= inicioBusqueda
-        );
-
+        if(!r || !r.horario) return false;
+        const rango = parseHorarioRango(r.horario);
+        if(!rango) return false;
+        return rango.inicio <= finBusqueda && rango.fin >= inicioBusqueda;
       });
 
       if(!filtrados.length){
