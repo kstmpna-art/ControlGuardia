@@ -1031,6 +1031,15 @@ body{
   <button class="btn btn-gold" onclick="abrirBusqueda()">Buscar historial</button>
 </div>
 
+<div class="btns" style="margin-top:12px;align-items:center;">
+  <span style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;">Exportar CSV:</span>
+  <button class="btn" style="background:#1a2e4a;" onclick="exportar('hoy')">📥 Hoy</button>
+  <button class="btn" style="background:#1a2e4a;" onclick="exportar('semana')">📥 Semana</button>
+  <button class="btn" style="background:#1a2e4a;" onclick="exportar('mes')">📥 Mes</button>
+  <button class="btn" style="background:#1a2e4a;" onclick="exportar('anio')">📥 Año</button>
+  <span style="font-size:11px;color:var(--muted);">Descarga los registros del período en un archivo compatible con Excel</span>
+</div>
+
       <div class="table-wrap">
         <table class="table">
           <thead>
@@ -1186,7 +1195,7 @@ body{
 // CONFIGURACIÓN
 // =====================================
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxyUzK4utW71og5zyHb7BmVxPHyoYnIzizvcGtEusaR3TogZYTMhivZsW6wlAYYsYS96g/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyJ4Q0x5697sKhAjVIl8Sigtl2tZ-yuDkpRSeDWD8pRQ2TfiXKaATr7sWO-zMLyC0eEqw/exec';
 const SECRET_TOKEN = 'STM_TOKEN_2025'; // ← Mismo valor que en el Apps Script
 
 const PERSONAL = [
@@ -1293,6 +1302,8 @@ document.getElementById('fecha').addEventListener('change', function(){
 
 let pendingDeleteId = null;
 let busquedaActiva = false;
+let editandoId = null;
+let registrosCache = [];
 
 // =====================================
 // GUARDAR REGISTRO
@@ -1331,7 +1342,7 @@ async function guardarRegistro(){
 }
 
   const btn = document.getElementById('btnGuardar');
-  btn.innerHTML = '<span class="loading"></span>Guardando...';
+  btn.innerHTML = '<span class="loading"></span>' + (editandoId ? 'Actualizando...' : 'Guardando...');
   btn.disabled = true;
 
   const fechaDesdeStr   = fecha.split('-').reverse().join('/');
@@ -1340,7 +1351,8 @@ async function guardarRegistro(){
 
   const body = {
     token     : SECRET_TOKEN,
-    accion    : 'guardar',
+    accion    : editandoId ? 'editar' : 'guardar',
+    id        : editandoId || null,
     fecha     : fecha,
     fechaHasta: fechaHasta,
     horario   : horarioCompleto,
@@ -1365,7 +1377,8 @@ async function guardarRegistro(){
     const data = await res.json();
 
     if(data.ok){
-      toast('✅ Turno guardado correctamente');
+      toast(editandoId ? '✅ Registro actualizado correctamente' : '✅ Turno guardado correctamente');
+      if(editandoId) cancelarEdicion();
       busquedaActiva = false;
       cargarDatos();
     }else{
@@ -1376,7 +1389,7 @@ async function guardarRegistro(){
     console.error(err);
     toast('❌ Error de conexión al guardar');
   }finally{
-    btn.innerHTML = 'Guardar turno';
+    btn.innerHTML = editandoId ? 'Guardar cambios' : 'Guardar turno';
     btn.disabled = false;
   }
 }
@@ -1393,8 +1406,7 @@ async function cargarDatos(){
     if(!res.ok) throw new Error('HTTP ' + res.status);
 
     const rows = await res.json();
-
-    // --- NUEVA SECCIÓN: FILTRAR SOLO ÚLTIMAS 24 HORAS PARA LA TABLA ---
+    registrosCache = rows;
     const ahora = new Date();
     const hace24h = new Date(ahora.getTime() - (24 * 60 * 60 * 1000));
     
@@ -1546,7 +1558,15 @@ function renderTabla(rows){
   <td>${r.op1       || '—'}</td>
   <td>${r.op2       || '—'}</td>
   <td>${r.op3       || '—'}</td>
-  <td>
+  <td style="white-space:nowrap;">
+    <button onclick="editarRegistro(${r.id})"
+      style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;
+      padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:700;
+      font-family:'Inter',sans-serif;transition:.2s;margin-right:6px;"
+      onmouseover="this.style.filter='brightness(1.2)'"
+      onmouseout="this.style.filter='brightness(1)'">
+      Editar
+    </button>
     <button onclick="confirmarEliminar(${r.id})"
       style="background:linear-gradient(135deg,#ff3d61,#ff6b81);border:none;color:white;
       padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:700;
@@ -1682,6 +1702,7 @@ function iniciarAutoRefresh(){
     fetch(SCRIPT_URL + '?accion=listar')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(rows => {
+        registrosCache = rows;
         renderCards(rows);
         if(!busquedaActiva){
           const ahora = new Date();
@@ -1704,6 +1725,73 @@ function iniciarAutoRefresh(){
       })
       .catch(err => console.error('Error en auto-refresh:', err));
   }, 30000);
+}
+
+// =====================================
+// EDITAR REGISTRO
+// =====================================
+
+function editarRegistro(id){
+  const reg = registrosCache.find(r => r.id === id);
+  if(!reg){
+    toast('⚠ Registro no encontrado');
+    return;
+  }
+
+  editandoId = id;
+
+  const rango = parseHorarioRango(reg.horario);
+
+  if(rango){
+    const ini = rango.inicio;
+    const fin = rango.fin;
+    document.getElementById('fecha').value =
+      ini.getFullYear() + '-' + String(ini.getMonth()+1).padStart(2,'0') + '-' + String(ini.getDate()).padStart(2,'0');
+    document.getElementById('fechaHasta').value =
+      fin.getFullYear() + '-' + String(fin.getMonth()+1).padStart(2,'0') + '-' + String(fin.getDate()).padStart(2,'0');
+    document.getElementById('desde').value =
+      String(ini.getHours()).padStart(2,'0') + ':' + String(ini.getMinutes()).padStart(2,'0');
+    document.getElementById('hasta').value =
+      String(fin.getHours()).padStart(2,'0') + ':' + String(fin.getMinutes()).padStart(2,'0');
+  }
+
+  document.getElementById('selOficial').value   = reg.oficial   || '';
+  document.getElementById('selEncargado').value = reg.encargado || '';
+  document.getElementById('selSime').value      = reg.sime      || '';
+  document.getElementById('selSidom').value     = reg.sidom     || '';
+  document.getElementById('selOp1').value       = reg.op1       || '';
+  document.getElementById('selOp2').value       = reg.op2       || '';
+  document.getElementById('selOp3').value       = reg.op3       || '';
+
+  const btn = document.getElementById('btnGuardar');
+  btn.innerHTML = 'Guardar cambios';
+  btn.classList.remove('btn-primary');
+  btn.classList.add('btn-gold');
+
+  if(!document.getElementById('btnCancelarEdicion')){
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-red';
+    cancelBtn.id = 'btnCancelarEdicion';
+    cancelBtn.textContent = 'Cancelar edición';
+    cancelBtn.onclick = cancelarEdicion;
+    btn.parentNode.insertBefore(cancelBtn, btn.nextSibling);
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('✏️ Editando registro — modificá y guardá');
+}
+
+function cancelarEdicion(){
+  editandoId = null;
+  const btn = document.getElementById('btnGuardar');
+  btn.innerHTML = 'Guardar turno';
+  btn.classList.remove('btn-gold');
+  btn.classList.add('btn-primary');
+
+  const cancelBtn = document.getElementById('btnCancelarEdicion');
+  if(cancelBtn) cancelBtn.remove();
+
+  toast('Edición cancelada');
 }
 
 // =====================================
@@ -1768,9 +1856,14 @@ function ejecutarBusqueda(){
   cerrarModal('modalBusqueda');
   busquedaActiva = true;
 
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--accent);padding:30px;"><span class="loading" style="width:18px;height:18px;border-width:3px;"></span> Buscando registros del historial...</td></tr>';
+
   fetch(SCRIPT_URL + '?accion=listar')
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(rows => {
+
+      registrosCache = rows;
 
       const partesDesde = fechaDesde.split('-');
       const partesHasta = fechaHasta.split('-');
@@ -1794,6 +1887,7 @@ function ejecutarBusqueda(){
       });
 
       if(!filtrados.length){
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:30px;">⚠ Sin registros para ese filtro de fechas</td></tr>';
         toast('⚠ Sin registros para ese filtro');
         return;
       }
@@ -1804,8 +1898,95 @@ function ejecutarBusqueda(){
     })
     .catch(err => {
       console.error(err);
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--red);padding:30px;">❌ Error al buscar — intentá de nuevo</td></tr>';
       toast('❌ Error al buscar');
     });
+}
+
+// =====================================
+// EXPORTAR REGISTROS (CSV)
+// =====================================
+
+function exportar(periodo){
+  if(!registrosCache.length){
+    toast('⚠ No hay datos para exportar');
+    return;
+  }
+
+  const ahora = new Date();
+  let inicio, fin;
+
+  const dia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  const diaFin = new Date(dia.getTime() + 24*60*60*1000 - 1);
+
+  switch(periodo){
+    case 'hoy':
+      inicio = dia;
+      fin = diaFin;
+      break;
+    case 'semana': {
+      const dow = dia.getDay();
+      const lunes = new Date(dia.getTime() - ((dow === 0 ? 6 : dow - 1)) * 24*60*60*1000);
+      inicio = lunes;
+      fin = new Date(lunes.getTime() + 7*24*60*60*1000 - 1);
+      break;
+    }
+    case 'mes':
+      inicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+      fin = new Date(ahora.getFullYear(), ahora.getMonth()+1, 0, 23, 59, 59);
+      break;
+    case 'anio':
+      inicio = new Date(ahora.getFullYear(), 0, 1);
+      fin = new Date(ahora.getFullYear(), 11, 31, 23, 59, 59);
+      break;
+    default:
+      return;
+  }
+
+  const filtrados = registrosCache.filter(r => {
+    if(!r || !r.horario) return false;
+    const rango = parseHorarioRango(r.horario);
+    if(!rango) return false;
+    return rango.inicio <= fin && rango.fin >= inicio;
+  });
+
+  if(!filtrados.length){
+    toast('⚠ Sin registros para exportar en ese período');
+    return;
+  }
+
+  const encabezado = ['ID','Fecha desde','Horario','Fecha hasta','Oficial','Encargado','SIME','SIDOM','Op.1','Op.2','Op.3','Usuario exportó'];
+  const filas = filtrados.map(r => [
+    r.id,
+    formatearFecha(r.fecha),
+    r.horario || '',
+    formatearFecha(r.fechaHasta),
+    r.oficial || '',
+    r.encargado || '',
+    r.sime || '',
+    r.sidom || '',
+    r.op1 || '',
+    r.op2 || '',
+    r.op3 || '',
+    usuarioActual || 'Desconocido'
+  ]);
+
+  const csv = [encabezado, ...filas]
+    .map(fila => fila.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(';'))
+    .join('\n');
+
+  const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const nombres = { hoy:'hoy', semana:'semana', mes:'mes', anio:'anio' };
+  a.href = url;
+  a.download = 'registros_guardia_' + nombres[periodo] + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  toast('📥 ' + filtrados.length + ' registro(s) exportado(s)');
 }
 
 // =====================================
