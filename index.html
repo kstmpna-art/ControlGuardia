@@ -1407,31 +1407,26 @@ async function cargarDatos(){
 
     const rows = await res.json();
     registrosCache = rows;
+
+    // Obtener hoy y ayer como strings YYYY-MM-DD
     const ahora = new Date();
-    const hace24h = new Date(ahora.getTime() - (24 * 60 * 60 * 1000));
-    
+    const fmt = d => d.getFullYear() + '-' +
+      String(d.getMonth()+1).padStart(2,'0') + '-' +
+      String(d.getDate()).padStart(2,'0');
+    const hoyStr = fmt(ahora);
+    const ayerStr = fmt(new Date(ahora.getTime() - 24*60*60*1000));
+
     const rowsFiltrados = rows.filter(r => {
       if(!r || !r.fecha) return false;
-      
-      // Parsear la fecha del registro (formato esperado: YYYY-MM-DD o DD/MM/YYYY)
-      let fechaRegistro;
-      if(typeof r.fecha === 'string' && r.fecha.includes('-') && r.fecha.length === 10){
-        // formato YYYY-MM-DD (ISO)
-        fechaRegistro = new Date(r.fecha + 'T00:00:00');
-      } else if(typeof r.fecha === 'string' && r.fecha.includes('/')){
-        // formato DD/MM/YYYY
-        const partes = r.fecha.split('/');
-        if(partes.length === 3){
-          fechaRegistro = new Date(partes[2], partes[1]-1, partes[0]);
-        } else {
-          return false;
-        }
-      } else {
-        return false;
+      let f = String(r.fecha).trim();
+      // Si viene DD/MM/YYYY, convertir a YYYY-MM-DD
+      if(f.includes('/')){
+        const p = f.split('/');
+        if(p.length === 3) f = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
       }
-      
-      // Comparar si la fecha del registro está dentro de las últimas 24h
-      return fechaRegistro >= hace24h;
+      // Si viene con hora (ISO), cortar solo la fecha
+      if(f.includes('T')) f = f.split('T')[0];
+      return f >= ayerStr && f <= hoyStr;
     });
 
     // Renderizar tabla con el filtro de 24h
@@ -1543,22 +1538,24 @@ function renderTabla(rows){
     return;
   }
 
-  rows.forEach(r => {
+  [...rows].reverse().forEach(r => {
 
     const tr = document.createElement('tr');
 
-    tr.innerHTML = `
-  <td>${formatearFecha(r.fecha)}</td>
-  <td style="font-size:12px;color:var(--muted);white-space:nowrap;">${r.horario || '—'}</td>
-  <td>${formatearFecha(r.fechaHasta)}</td>
-  <td>${r.oficial   || '—'}</td>
-  <td>${r.encargado || '—'}</td>
-  <td>${r.sime      || '—'}</td>
-  <td>${r.sidom     || '—'}</td>
-  <td>${r.op1       || '—'}</td>
-  <td>${r.op2       || '—'}</td>
-  <td>${r.op3       || '—'}</td>
-  <td style="white-space:nowrap;">
+    // Detectar si el horario está transcurriendo ahora
+    const ahora = new Date();
+    const rango = parseHorarioRango(r.horario);
+    const activa = rango && ahora >= rango.inicio && ahora <= rango.fin;
+    const finalizada = rango && ahora > rango.fin;
+
+    if(activa){
+      tr.style.background = 'rgba(0,229,160,.2)';
+      tr.style.borderLeft = '4px solid var(--green)';
+    }
+
+    const acciones = finalizada
+      ? '<td style="text-align:center;color:var(--muted);font-size:11px;">Finalizado</td>'
+      : `<td style="white-space:nowrap;">
     <button onclick="editarRegistro(${r.id})"
       style="background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:white;
       padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:700;
@@ -1575,7 +1572,20 @@ function renderTabla(rows){
       onmouseout="this.style.filter='brightness(1)'">
       Eliminar
     </button>
-   </td>
+   </td>`;
+
+    tr.innerHTML = `
+  <td>${formatearFecha(r.fecha)}</td>
+  <td style="font-size:12px;color:var(--muted);white-space:nowrap;">${r.horario || '—'}</td>
+  <td>${formatearFecha(r.fechaHasta)}</td>
+  <td>${r.oficial   || '—'}</td>
+  <td>${r.encargado || '—'}</td>
+  <td>${r.sime      || '—'}</td>
+  <td>${r.sidom     || '—'}</td>
+  <td>${r.op1       || '—'}</td>
+  <td>${r.op2       || '—'}</td>
+  <td>${r.op3       || '—'}</td>
+  ${acciones}
 `;
 
     tbody.appendChild(tr);
@@ -1706,19 +1716,20 @@ function iniciarAutoRefresh(){
         renderCards(rows);
         if(!busquedaActiva){
           const ahora = new Date();
-          const hace24h = new Date(ahora.getTime() - (24 * 60 * 60 * 1000));
+          const fmt = d => d.getFullYear() + '-' +
+            String(d.getMonth()+1).padStart(2,'0') + '-' +
+            String(d.getDate()).padStart(2,'0');
+          const hoyStr = fmt(ahora);
+          const ayerStr = fmt(new Date(ahora.getTime() - 24*60*60*1000));
           const rowsFiltrados = rows.filter(r => {
             if(!r || !r.fecha) return false;
-            let fechaRegistro;
-            if(typeof r.fecha === 'string' && r.fecha.includes('-') && r.fecha.length === 10){
-              fechaRegistro = new Date(r.fecha + 'T00:00:00');
-            } else if(typeof r.fecha === 'string' && r.fecha.includes('/')){
-              const partes = r.fecha.split('/');
-              if(partes.length === 3){
-                fechaRegistro = new Date(partes[2], partes[1]-1, partes[0]);
-              } else { return false; }
-            } else { return false; }
-            return fechaRegistro >= hace24h;
+            let f = String(r.fecha).trim();
+            if(f.includes('/')){
+              const p = f.split('/');
+              if(p.length === 3) f = p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+            }
+            if(f.includes('T')) f = f.split('T')[0];
+            return f >= ayerStr && f <= hoyStr;
           });
           renderTabla(rowsFiltrados);
         }
